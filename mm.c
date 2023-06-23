@@ -432,8 +432,39 @@ static block_t *coalesce_block(block_t *block) {
      * old versions of the 213 website. We also discourage you from looking
      * at the malloc code in CS:APP and K&R, which make heavy use of macros
      * and which we no longer consider to be good style.
+     *
+     *
      */
-    return block;
+
+    word_t *prev_foot = find_prev_footer(block);
+    block_t *next_block = find_next(block);
+
+    bool prev_alloc_status = extract_alloc(*prev_foot);
+    bool next_alloc_status = get_alloc(next_block);
+
+    if (prev_alloc_status == true && next_alloc_status == true) {
+        return block;
+    }
+
+    if (prev_alloc_status == true && next_alloc_status == false) {
+        size_t merged_size = get_size(block) + get_size(next_block);
+        write_block(block, merged_size, false);
+
+        return block;
+    }
+    block_t *prev_block = find_prev(block);
+
+    if (prev_alloc_status == false && next_alloc_status == true) {
+
+        size_t merged_size = get_size(block) + get_size(prev_block);
+        write_block(prev_block, merged_size, false);
+        return prev_block;
+    }
+
+    size_t merged_size =
+        get_size(block) + get_size(prev_block) + get_size(next_block);
+    write_block(prev_block, merged_size, false);
+    return prev_block;
 }
 
 /**
@@ -528,6 +559,78 @@ static block_t *find_fit(size_t asize) {
     return NULL; // no fit found
 }
 
+static bool mm_check_epi_pro_logue(void) {
+    word_t *initial_heap = mem_heap_lo();
+    if (extract_size(*initial_heap) != 0 ||
+        extract_alloc(*initial_heap) == false) {
+        return false;
+    }
+
+    word_t *epilogue = (word_t *)((char *)mem_heap_hi() - 7);
+
+    if (extract_size(*epilogue) != 0 || extract_alloc(*epilogue) == false) {
+        return false;
+    }
+    return true;
+}
+
+static bool mm_check_alignment(void){
+    block_t*current;
+    for(current = heap_start;get_size(current)>0;current = find_next(current)){
+        char*bp = header_to_payload(current);
+       
+        if(((word_t)bp % (word_t )16) !=0){
+            return false;
+
+
+        }
+
+    }
+    return true;
+    
+
+    
+}
+
+static bool mm_check_coalescing(void){
+    block_t*current;
+    for(current = heap_start;get_size(current)>0;current = find_next(current)){
+
+       if(get_alloc(current)==false){
+        if(extract_alloc(*find_prev_footer(current))==false || get_alloc(find_next(current))==false){
+            return false;
+
+        }
+       }
+
+    }
+    return true;
+
+
+}
+
+static bool mm_check_boundaries(void){
+    char* initial_heap = (char *)mem_heap_lo()+8;
+     char*epilogue = ((char *)mem_heap_hi() - 7);
+       block_t*current;
+    for(current = heap_start;get_size(current)>0;current = find_next(current)){
+        char *bp = (char*)current;
+
+       if((word_t)bp<(word_t)initial_heap ||(word_t)current> (word_t)epilogue){
+        return false;
+       
+
+        }
+       }
+       return true;
+
+    }
+
+
+    
+
+
+
 /**
  * @brief
  *
@@ -540,6 +643,15 @@ static block_t *find_fit(size_t asize) {
  * @return
  */
 bool mm_checkheap(int line) {
+    bool check_epi_pro = mm_check_epi_pro_logue();
+    bool check_alignment = mm_check_alignment();
+    bool check_coalescing = mm_check_coalescing();
+    bool check_boundaries = mm_check_boundaries();
+    
+    // return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
+    return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
+    
+
     /*
      * TODO: Delete this comment!
      *
@@ -552,6 +664,7 @@ bool mm_checkheap(int line) {
      * Internal use only: If you mix guacamole on your bibimbap,
      * do you eat it with a pair of chopsticks, or with a spoon?
      */
+
     dbg_printf("I did not write a heap checker (called at line %d)\n", line);
     return true;
 }
@@ -655,6 +768,7 @@ void *malloc(size_t size) {
     split_block(block, asize);
 
     bp = header_to_payload(block);
+  
 
     dbg_ensures(mm_checkheap(__LINE__));
     return bp;
