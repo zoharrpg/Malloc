@@ -114,6 +114,8 @@ static const word_t size_mask = ~(word_t)0xF;
 typedef struct block {
     /** @brief Header contains size + allocation flag */
     word_t header;
+    struct block* next;
+    struct block* prev;
 
     /**
      * @brief A pointer to the block payload.
@@ -150,6 +152,9 @@ typedef struct block {
 /** @brief Pointer to first block in the heap */
 static block_t *heap_start = NULL;
 
+/** the head of the free list*/
+static block_t *free_head = NULL;
+
 /*
  *****************************************************************************
  * The functions below are short wrapper functions to perform                *
@@ -169,6 +174,61 @@ static block_t *heap_start = NULL;
  *                        BEGIN SHORT HELPER FUNCTIONS
  * ---------------------------------------------------------------------------
  */
+static void add_free_list(block_t *block){
+     if(free_head== NULL){
+            free_head = block;
+            block->next = NULL;
+            block->prev = NULL;
+        }else{
+            
+                free_head->prev = block;
+                block->next = free_head;
+                block->prev = NULL;
+                free_head = block;
+
+          
+            
+        }
+
+}
+
+static void remove_from_list(block_t *block){
+   if(free_head ==NULL){
+    printf("remove from empty listerror\n");
+    exit(1);
+   }
+   if(block == free_head){
+    block_t * next = block->next;
+    if(next!=NULL){
+        next->prev =NULL;
+        block->next = NULL;
+        free_head = next;
+
+    }else{
+        free_head = block->next;
+    }
+    
+   }else{
+     block_t * next = block->next;
+     block_t *prev  = block->prev;
+     if(next!=NULL){
+        prev->next = next;
+        next->prev = prev;
+        
+     }else{
+        prev->next = next;
+        
+
+     }
+     block->prev = NULL;
+    block->next = NULL;
+
+
+
+   }
+
+
+}
 
 /**
  * @brief Returns the maximum of two integers.
@@ -343,9 +403,19 @@ static void write_epilogue(block_t *block) {
 static void write_block(block_t *block, size_t size, bool alloc) {
     dbg_requires(block != NULL);
     dbg_requires(size > 0);
+  
     block->header = pack(size, alloc);
+    if(alloc == false){
+        add_free_list(block);
+       
+    }else{
+        remove_from_list(block);
+    }
+    
     word_t *footerp = header_to_footer(block);
     *footerp = pack(size, alloc);
+
+    
 }
 
 /**
@@ -448,6 +518,8 @@ static block_t *coalesce_block(block_t *block) {
 
     if (prev_alloc_status == true && next_alloc_status == false) {
         size_t merged_size = get_size(block) + get_size(next_block);
+        remove_from_list(block);
+        remove_from_list(next_block);
         write_block(block, merged_size, false);
 
         return block;
@@ -457,12 +529,19 @@ static block_t *coalesce_block(block_t *block) {
     if (prev_alloc_status == false && next_alloc_status == true) {
 
         size_t merged_size = get_size(block) + get_size(prev_block);
+        remove_from_list(block);
+        remove_from_list(prev_block);
         write_block(prev_block, merged_size, false);
         return prev_block;
     }
 
     size_t merged_size =
         get_size(block) + get_size(prev_block) + get_size(next_block);
+
+        remove_from_list(block);
+        remove_from_list(prev_block);
+        remove_from_list(next_block);
+        
     write_block(prev_block, merged_size, false);
     return prev_block;
 }
@@ -550,7 +629,7 @@ static void split_block(block_t *block, size_t asize) {
 static block_t *find_fit(size_t asize) {
     block_t *block;
 
-    for (block = heap_start; get_size(block) > 0; block = find_next(block)) {
+    for (block = free_head; block!=NULL; block = block->next) {
 
         if (!(get_alloc(block)) && (asize <= get_size(block))) {
             return block;
