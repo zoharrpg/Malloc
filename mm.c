@@ -643,10 +643,26 @@ static bool mm_check_boundaries(void){
  * @return
  */
 bool mm_checkheap(int line) {
+
     bool check_epi_pro = mm_check_epi_pro_logue();
     bool check_alignment = mm_check_alignment();
     bool check_coalescing = mm_check_coalescing();
     bool check_boundaries = mm_check_boundaries();
+
+    if(!check_epi_pro){
+        printf("epi or pro logue error\n");
+    }
+    if(!check_alignment){
+        printf("alignment error\n");
+    }
+    if(!check_coalescing){
+        printf("coalescing error\n");
+    }
+    if(!check_boundaries){
+        printf("boundaries error");
+    }
+
+
     
     // return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
     return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
