@@ -375,10 +375,6 @@ static void add_free_list(block_t *block){
 }
 
 static void remove_from_list(block_t *block){
-//    if(free_head ==NULL){
-//     printf("empty list error\n");
-//     exit(1);
-//    }
 
    if(block == free_head){
     block_t ** next = get_next(block);
@@ -729,7 +725,7 @@ static bool mm_check_coalescing(void){
     for(current = heap_start;get_size(current)>0;current = find_next(current)){
 
        if(get_alloc(current)==false){
-        if(extract_alloc(*find_prev_footer(current))==false || get_alloc(find_next(current))==false){
+        if(get_alloc((footer_to_header(find_prev_footer(current))))==false || get_alloc(find_next(current))==false){
             return false;
 
         }
