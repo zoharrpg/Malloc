@@ -110,12 +110,13 @@ static const word_t alloc_mask = 0x1;
  */
 static const word_t size_mask = ~(word_t)0xF;
 
+
+
 /** @brief Represents the header and payload of one block in the heap */
 typedef struct block {
     /** @brief Header contains size + allocation flag */
     word_t header;
-    struct block* next;
-    struct block* prev;
+    
 
     /**
      * @brief A pointer to the block payload.
@@ -147,6 +148,8 @@ typedef struct block {
      */
 } block_t;
 
+
+
 /* Global variables */
 
 /** @brief Pointer to first block in the heap */
@@ -154,6 +157,10 @@ static block_t *heap_start = NULL;
 
 /** the head of the free list*/
 static block_t *free_head = NULL;
+
+
+
+
 
 /*
  *****************************************************************************
@@ -174,61 +181,7 @@ static block_t *free_head = NULL;
  *                        BEGIN SHORT HELPER FUNCTIONS
  * ---------------------------------------------------------------------------
  */
-static void add_free_list(block_t *block){
-     if(free_head== NULL){
-            free_head = block;
-            block->next = NULL;
-            block->prev = NULL;
-        }else{
-            
-                free_head->prev = block;
-                block->next = free_head;
-                block->prev = NULL;
-                free_head = block;
 
-          
-            
-        }
-
-}
-
-static void remove_from_list(block_t *block){
-   if(free_head ==NULL){
-    printf("remove from empty listerror\n");
-    exit(1);
-   }
-   if(block == free_head){
-    block_t * next = block->next;
-    if(next!=NULL){
-        next->prev =NULL;
-        block->next = NULL;
-        free_head = next;
-
-    }else{
-        free_head = block->next;
-    }
-    
-   }else{
-     block_t * next = block->next;
-     block_t *prev  = block->prev;
-     if(next!=NULL){
-        prev->next = next;
-        next->prev = prev;
-        
-     }else{
-        prev->next = next;
-        
-
-     }
-     block->prev = NULL;
-    block->next = NULL;
-
-
-
-   }
-
-
-}
 
 /**
  * @brief Returns the maximum of two integers.
@@ -388,6 +341,86 @@ static void write_epilogue(block_t *block) {
     block->header = pack(0, true);
 }
 
+static block_t** get_next(block_t *block){
+    void* bp = header_to_payload(block);
+    return (block_t**)(bp);
+}
+static block_t** get_prev(block_t*block){
+    void* bp = header_to_payload(block);
+    return ((block_t**) ((char*)bp+8));
+}
+static void add_free_list(block_t *block){
+    block_t** next = get_next(block);
+    block_t** prev = get_prev(block);
+    if(block == free_head){
+        return;
+    }
+     if(free_head== NULL){
+            free_head = block;
+            
+            *next= NULL;
+            *prev= NULL;
+        }else{
+                block_t** head_pre = get_prev(free_head);
+            
+                *head_pre = block;
+                *next = free_head;
+                *prev = NULL;
+                free_head = block;
+
+          
+            
+        }
+
+}
+
+static void remove_from_list(block_t *block){
+//    if(free_head ==NULL){
+//     printf("empty list error\n");
+//     exit(1);
+//    }
+
+   if(block == free_head){
+    block_t ** next = get_next(block);
+    if(*next!=NULL){
+        block_t** next_pre= get_prev(*next);
+        *next_pre =NULL;
+        free_head = *next;
+        *next = NULL;
+        
+
+    }else{
+        free_head = NULL;
+    }
+    
+   }else{
+     block_t ** next = get_next(block);
+     block_t **prev  = get_prev(block);
+     if(*next!=NULL){
+        block_t**prev_next = get_next(*prev);
+        block_t** next_prev =get_prev(*next);
+        *prev_next = *next;
+        *next_prev = *prev;
+        
+     }else{
+        block_t**prev_next = get_next(*prev);
+       
+        *prev_next = *next;
+        
+
+     }
+     
+     *prev = NULL;
+     *next = NULL;
+
+
+
+   }
+   
+
+
+}
+
 /**
  * @brief Writes a block starting at the given address.
  *
@@ -403,19 +436,16 @@ static void write_epilogue(block_t *block) {
 static void write_block(block_t *block, size_t size, bool alloc) {
     dbg_requires(block != NULL);
     dbg_requires(size > 0);
+    
   
     block->header = pack(size, alloc);
-    if(alloc == false){
-        add_free_list(block);
-       
-    }else{
-        remove_from_list(block);
-    }
+   
     
     word_t *footerp = header_to_footer(block);
     *footerp = pack(size, alloc);
-
     
+  
+        
 }
 
 /**
@@ -487,6 +517,7 @@ static block_t *find_prev(block_t *block) {
  * @return
  */
 static block_t *coalesce_block(block_t *block) {
+
     /*
      * TODO: delete or replace this comment once you're done.
      *
@@ -507,9 +538,18 @@ static block_t *coalesce_block(block_t *block) {
      */
 
     word_t *prev_foot = find_prev_footer(block);
-    block_t *next_block = find_next(block);
 
-    bool prev_alloc_status = extract_alloc(*prev_foot);
+    block_t *next_block = find_next(block);
+    bool prev_alloc_status;
+
+    if((block_t*)prev_foot>=heap_start){
+        prev_alloc_status = get_alloc((footer_to_header(prev_foot)));
+
+    }else{
+        prev_alloc_status = true;
+        
+    }
+    
     bool next_alloc_status = get_alloc(next_block);
 
     if (prev_alloc_status == true && next_alloc_status == true) {
@@ -518,9 +558,13 @@ static block_t *coalesce_block(block_t *block) {
 
     if (prev_alloc_status == true && next_alloc_status == false) {
         size_t merged_size = get_size(block) + get_size(next_block);
-        remove_from_list(block);
         remove_from_list(next_block);
         write_block(block, merged_size, false);
+       ////////////attention
+    
+        
+       
+        
 
         return block;
     }
@@ -532,17 +576,24 @@ static block_t *coalesce_block(block_t *block) {
         remove_from_list(block);
         remove_from_list(prev_block);
         write_block(prev_block, merged_size, false);
+        add_free_list(prev_block);
+        
+       
+        
         return prev_block;
     }
 
     size_t merged_size =
         get_size(block) + get_size(prev_block) + get_size(next_block);
-
-        remove_from_list(block);
         remove_from_list(prev_block);
+        remove_from_list(block);
         remove_from_list(next_block);
+        write_block(prev_block, merged_size, false);
+        add_free_list(prev_block);
+
+       
         
-    write_block(prev_block, merged_size, false);
+    
     return prev_block;
 }
 
@@ -576,6 +627,7 @@ static block_t *extend_heap(size_t size) {
     // Initialize free block header/footer
     block_t *block = payload_to_header(bp);
     write_block(block, size, false);
+    add_free_list(block);
 
     // Create new epilogue header
     block_t *block_next = find_next(block);
@@ -605,11 +657,12 @@ static void split_block(block_t *block, size_t asize) {
     size_t block_size = get_size(block);
 
     if ((block_size - asize) >= min_block_size) {
-        block_t *block_next;
+        block_t *block_next; 
         write_block(block, asize, true);
 
         block_next = find_next(block);
         write_block(block_next, block_size - asize, false);
+        add_free_list(block_next);
     }
 
     dbg_ensures(get_alloc(block));
@@ -629,7 +682,7 @@ static void split_block(block_t *block, size_t asize) {
 static block_t *find_fit(size_t asize) {
     block_t *block;
 
-    for (block = free_head; block!=NULL; block = block->next) {
+    for (block = free_head; block!=NULL; block = *get_next(block)) {
 
         if (!(get_alloc(block)) && (asize <= get_size(block))) {
             return block;
@@ -793,6 +846,8 @@ bool mm_init(void) {
 
     // Heap starts with first "block header", currently the epilogue
     heap_start = (block_t *)&(start[1]);
+    
+
 
     // Extend the empty heap with a free block of chunksize bytes
     if (extend_heap(chunksize) == NULL) {
@@ -858,6 +913,7 @@ void *malloc(size_t size) {
     // Mark block as allocated
     size_t block_size = get_size(block);
     write_block(block, block_size, true);
+    remove_from_list(block);
 
     // Try to split the block if too large
     split_block(block, asize);
@@ -894,6 +950,7 @@ void free(void *bp) {
 
     // Mark the block as free
     write_block(block, size, false);
+    add_free_list(block);
 
     // Try to coalesce the block with its neighbors
     coalesce_block(block);
