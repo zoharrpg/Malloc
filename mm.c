@@ -110,13 +110,10 @@ static const word_t alloc_mask = 0x1;
  */
 static const word_t size_mask = ~(word_t)0xF;
 
-
-
 /** @brief Represents the header and payload of one block in the heap */
 typedef struct block {
     /** @brief Header contains size + allocation flag */
     word_t header;
-    
 
     /**
      * @brief A pointer to the block payload.
@@ -148,8 +145,6 @@ typedef struct block {
      */
 } block_t;
 
-
-
 /* Global variables */
 
 /** @brief Pointer to first block in the heap */
@@ -157,10 +152,6 @@ static block_t *heap_start = NULL;
 
 /** the head of the free list*/
 static block_t *free_head = NULL;
-
-
-
-
 
 /*
  *****************************************************************************
@@ -181,7 +172,6 @@ static block_t *free_head = NULL;
  *                        BEGIN SHORT HELPER FUNCTIONS
  * ---------------------------------------------------------------------------
  */
-
 
 /**
  * @brief Returns the maximum of two integers.
@@ -341,80 +331,67 @@ static void write_epilogue(block_t *block) {
     block->header = pack(0, true);
 }
 
-static block_t** get_next(block_t *block){
-    void* bp = header_to_payload(block);
-    return (block_t**)(bp);
+static block_t **get_next(block_t *block) {
+    void *bp = header_to_payload(block);
+    return (block_t **)(bp);
 }
-static block_t** get_prev(block_t*block){
-    void* bp = header_to_payload(block);
-    return ((block_t**) ((char*)bp+8));
+static block_t **get_prev(block_t *block) {
+    void *bp = header_to_payload(block);
+    return ((block_t **)((char *)bp + 8));
 }
-static void add_free_list(block_t *block){
-    block_t** next = get_next(block);
-    block_t** prev = get_prev(block);
-    if(block == free_head){
+static void add_free_list(block_t *block) {
+    block_t **next = get_next(block);
+    block_t **prev = get_prev(block);
+    if (block == free_head) {
         return;
     }
-     if(free_head== NULL){
-            free_head = block;
-            
-            *next= NULL;
-            *prev= NULL;
-        }else{
-                block_t** head_pre = get_prev(free_head);
-            
-                *head_pre = block;
-                *next = free_head;
-                *prev = NULL;
-                free_head = block;
+    if (free_head == NULL) {
+        free_head = block;
 
-          
-            
-        }
+        *next = NULL;
+        *prev = NULL;
+    } else {
+        block_t **head_pre = get_prev(free_head);
 
+        *head_pre = block;
+        *next = free_head;
+        *prev = NULL;
+        free_head = block;
+    }
 }
 
-static void remove_from_list(block_t *block){
+static void remove_from_list(block_t *block) {
 
-   if(block == free_head){
-    block_t ** next = get_next(block);
-    if(*next!=NULL){
-        block_t** next_pre= get_prev(*next);
-        *next_pre =NULL;
-        free_head = *next;
+    if (block == free_head) {
+        block_t **next = get_next(block);
+        if (*next != NULL) {
+            block_t **next_pre = get_prev(*next);
+            *next_pre = NULL;
+            free_head = *next;
+            *next = NULL;
+
+        } else {
+            free_head = NULL;
+        }
+
+    } else {
+        block_t **next = get_next(block);
+        block_t **prev = get_prev(block);
+        if (*next != NULL) {
+            block_t **prev_next = get_next(*prev);
+            block_t **next_prev = get_prev(*next);
+            *prev_next = *next;
+            *next_prev = *prev;
+
+        } else {
+            block_t **prev_next = get_next(*prev);
+
+            *prev_next = *next;
+        }
+
+        *prev = NULL;
         *next = NULL;
-        
-
-    }else{
-        free_head = NULL;
     }
-    
-   }else{
-     block_t ** next = get_next(block);
-     block_t **prev  = get_prev(block);
-     if(*next!=NULL){
-        block_t**prev_next = get_next(*prev);
-        block_t** next_prev =get_prev(*next);
-        *prev_next = *next;
-        *next_prev = *prev;
-        
-     }else{
-        block_t**prev_next = get_next(*prev);
-       
-        *prev_next = *next;
-        
-
-     }
-     
-     *prev = NULL;
-     *next = NULL;
-
-
-
-   }
-   
-
-
 }
 
 /**
@@ -432,16 +409,11 @@ static void remove_from_list(block_t *block){
 static void write_block(block_t *block, size_t size, bool alloc) {
     dbg_requires(block != NULL);
     dbg_requires(size > 0);
-    
-  
+
     block->header = pack(size, alloc);
-   
-    
+
     word_t *footerp = header_to_footer(block);
     *footerp = pack(size, alloc);
-    
-  
-        
 }
 
 /**
@@ -538,14 +510,13 @@ static block_t *coalesce_block(block_t *block) {
     block_t *next_block = find_next(block);
     bool prev_alloc_status;
 
-    if((block_t*)prev_foot>=heap_start){
+    if ((block_t *)prev_foot >= heap_start) {
         prev_alloc_status = get_alloc((footer_to_header(prev_foot)));
 
-    }else{
+    } else {
         prev_alloc_status = true;
-        
     }
-    
+
     bool next_alloc_status = get_alloc(next_block);
 
     if (prev_alloc_status == true && next_alloc_status == true) {
@@ -556,11 +527,7 @@ static block_t *coalesce_block(block_t *block) {
         size_t merged_size = get_size(block) + get_size(next_block);
         remove_from_list(next_block);
         write_block(block, merged_size, false);
-       ////////////attention
-    
-        
-       
-        
+        ////////////attention
 
         return block;
     }
@@ -573,23 +540,18 @@ static block_t *coalesce_block(block_t *block) {
         remove_from_list(prev_block);
         write_block(prev_block, merged_size, false);
         add_free_list(prev_block);
-        
-       
-        
+
         return prev_block;
     }
 
     size_t merged_size =
         get_size(block) + get_size(prev_block) + get_size(next_block);
-        remove_from_list(prev_block);
-        remove_from_list(block);
-        remove_from_list(next_block);
-        write_block(prev_block, merged_size, false);
-        add_free_list(prev_block);
+    remove_from_list(prev_block);
+    remove_from_list(block);
+    remove_from_list(next_block);
+    write_block(prev_block, merged_size, false);
+    add_free_list(prev_block);
 
-       
-        
-    
     return prev_block;
 }
 
@@ -653,7 +615,7 @@ static void split_block(block_t *block, size_t asize) {
     size_t block_size = get_size(block);
 
     if ((block_size - asize) >= min_block_size) {
-        block_t *block_next; 
+        block_t *block_next;
         write_block(block, asize, true);
 
         block_next = find_next(block);
@@ -678,7 +640,7 @@ static void split_block(block_t *block, size_t asize) {
 static block_t *find_fit(size_t asize) {
     block_t *block;
 
-    for (block = free_head; block!=NULL; block = *get_next(block)) {
+    for (block = free_head; block != NULL; block = *get_next(block)) {
 
         if (!(get_alloc(block)) && (asize <= get_size(block))) {
             return block;
@@ -702,62 +664,50 @@ static bool mm_check_epi_pro_logue(void) {
     return true;
 }
 
-static bool mm_check_alignment(void){
-    block_t*current;
-    for(current = heap_start;get_size(current)>0;current = find_next(current)){
-        char*bp = header_to_payload(current);
-       
-        if(((word_t)bp % (word_t )16) !=0){
+static bool mm_check_alignment(void) {
+    block_t *current;
+    for (current = heap_start; get_size(current) > 0;
+         current = find_next(current)) {
+        char *bp = header_to_payload(current);
+
+        if (((word_t)bp % (word_t)16) != 0) {
             return false;
-
-
         }
-
     }
     return true;
-    
-
-    
 }
 
-static bool mm_check_coalescing(void){
-    block_t*current;
-    for(current = heap_start;get_size(current)>0;current = find_next(current)){
+static bool mm_check_coalescing(void) {
+    block_t *current;
+    for (current = heap_start; get_size(current) > 0;
+         current = find_next(current)) {
 
-       if(get_alloc(current)==false){
-        if(get_alloc((footer_to_header(find_prev_footer(current))))==false || get_alloc(find_next(current))==false){
-            return false;
-
+        if (get_alloc(current) == false) {
+            if (get_alloc((footer_to_header(find_prev_footer(current)))) ==
+                    false ||
+                get_alloc(find_next(current)) == false) {
+                return false;
+            }
         }
-       }
-
     }
     return true;
-
-
 }
 
-static bool mm_check_boundaries(void){
-    char* initial_heap = (char *)mem_heap_lo()+8;
-     char*epilogue = ((char *)mem_heap_hi() - 7);
-       block_t*current;
-    for(current = heap_start;get_size(current)>0;current = find_next(current)){
-        char *bp = (char*)current;
+static bool mm_check_boundaries(void) {
+    char *initial_heap = (char *)mem_heap_lo() + 8;
+    char *epilogue = ((char *)mem_heap_hi() - 7);
+    block_t *current;
+    for (current = heap_start; get_size(current) > 0;
+         current = find_next(current)) {
+        char *bp = (char *)current;
 
-       if((word_t)bp<(word_t)initial_heap ||(word_t)current> (word_t)epilogue){
-        return false;
-       
-
+        if ((word_t)bp < (word_t)initial_heap ||
+            (word_t)current > (word_t)epilogue) {
+            return false;
         }
-       }
-       return true;
-
     }
-
-
-    
-
-
+    return true;
+}
 
 /**
  * @brief
@@ -777,24 +727,23 @@ bool mm_checkheap(int line) {
     bool check_coalescing = mm_check_coalescing();
     bool check_boundaries = mm_check_boundaries();
 
-    if(!check_epi_pro){
+    if (!check_epi_pro) {
         printf("epi or pro logue error\n");
     }
-    if(!check_alignment){
+    if (!check_alignment) {
         printf("alignment error\n");
     }
-    if(!check_coalescing){
+    if (!check_coalescing) {
         printf("coalescing error\n");
     }
-    if(!check_boundaries){
+    if (!check_boundaries) {
         printf("boundaries error");
     }
 
-
-    
-    // return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
-    return check_epi_pro && check_alignment&& check_boundaries&&check_coalescing;
-    
+    // return check_epi_pro && check_alignment&&
+    // check_boundaries&&check_coalescing;
+    return check_epi_pro && check_alignment && check_boundaries &&
+           check_coalescing;
 
     /*
      * TODO: Delete this comment!
@@ -842,8 +791,6 @@ bool mm_init(void) {
 
     // Heap starts with first "block header", currently the epilogue
     heap_start = (block_t *)&(start[1]);
-    
-
 
     // Extend the empty heap with a free block of chunksize bytes
     if (extend_heap(chunksize) == NULL) {
@@ -915,7 +862,6 @@ void *malloc(size_t size) {
     split_block(block, asize);
 
     bp = header_to_payload(block);
-  
 
     dbg_ensures(mm_checkheap(__LINE__));
     return bp;
