@@ -144,14 +144,17 @@ typedef struct block {
      * which functions actually use the data contained in footers?
      */
 } block_t;
+#define LIST_NUM 15
+#define MAX_SIZE 32768
 
 /* Global variables */
 
 /** @brief Pointer to first block in the heap */
 static block_t *heap_start = NULL;
 
+block_t *seglist[LIST_NUM];
+
 /** the head of the free list*/
-static block_t *free_head = NULL;
 
 /*
  *****************************************************************************
@@ -331,47 +334,59 @@ static void write_epilogue(block_t *block) {
     block->header = pack(0, true);
 }
 
+/**
+ * Get next pointer
+ */
 static block_t **get_next(block_t *block) {
     void *bp = header_to_payload(block);
     return (block_t **)(bp);
 }
+/**
+ * get previous pointer
+ */
 static block_t **get_prev(block_t *block) {
     void *bp = header_to_payload(block);
     return ((block_t **)((char *)bp + 8));
 }
-static void add_free_list(block_t *block) {
+/**
+ * Add free list
+ */
+static void add_free_list(block_t *block, block_t **free_head) {
     block_t **next = get_next(block);
     block_t **prev = get_prev(block);
-    if (block == free_head) {
+    if (block == *free_head) {
         return;
     }
-    if (free_head == NULL) {
-        free_head = block;
+    if (*free_head == NULL) {
+        *free_head = block;
 
         *next = NULL;
         *prev = NULL;
     } else {
-        block_t **head_pre = get_prev(free_head);
+        block_t **head_pre = get_prev(*free_head);
 
         *head_pre = block;
-        *next = free_head;
+        *next = *free_head;
         *prev = NULL;
-        free_head = block;
+        *free_head = block;
     }
 }
 
-static void remove_from_list(block_t *block) {
+/**
+ * remove from list
+ */
+static void remove_from_list(block_t *block, block_t **free_head) {
 
-    if (block == free_head) {
+    if (block == *free_head) {
         block_t **next = get_next(block);
         if (*next != NULL) {
             block_t **next_pre = get_prev(*next);
             *next_pre = NULL;
-            free_head = *next;
+            *free_head = *next;
             *next = NULL;
 
         } else {
-            free_head = NULL;
+            *free_head = NULL;
         }
 
     } else {
@@ -392,6 +407,51 @@ static void remove_from_list(block_t *block) {
         *prev = NULL;
         *next = NULL;
     }
+}
+/**
+ * search seglist
+ */
+static block_t **search_seg(block_t *block) {
+    size_t size = get_size(block);
+    if (size >= MAX_SIZE) {
+        return &seglist[LIST_NUM - 1];
+    }
+
+    for (size_t i = 0; i < LIST_NUM; i++) {
+
+        size_t current_size = 1 << (i + 5);
+        if (current_size >= size) {
+
+            return &seglist[i];
+        }
+    }
+    printf("This is a big error\n");
+    return NULL;
+}
+static size_t search_seg_by_size(size_t size) {
+    if (size >= MAX_SIZE) {
+        return LIST_NUM - 1;
+    }
+
+    for (size_t i = 0; i < LIST_NUM; i++) {
+
+        size_t current_size = 1 << (i + 5);
+        if (current_size >= size) {
+
+            return i;
+        }
+    }
+    printf("This is a big error\n");
+    return 1;
+}
+
+static void add_seg_list(block_t *block, size_t size) {
+    block_t **head = search_seg(block);
+    add_free_list(block, head);
+}
+static void remove_seg_list(block_t *block, size_t size) {
+    block_t **head = search_seg(block);
+    remove_from_list(block, head);
 }
 
 /**
@@ -484,7 +544,7 @@ static block_t *find_prev(block_t *block) {
  * @param[in] block
  * @return
  */
-static block_t *coalesce_block(block_t *block) {
+static block_t *coalesce_block(block_t *block, size_t size) {
 
     /*
      * TODO: delete or replace this comment once you're done.
@@ -525,8 +585,10 @@ static block_t *coalesce_block(block_t *block) {
 
     if (prev_alloc_status == true && next_alloc_status == false) {
         size_t merged_size = get_size(block) + get_size(next_block);
-        remove_from_list(next_block);
+        remove_seg_list(next_block, get_size(next_block));
+        remove_seg_list(block, size);
         write_block(block, merged_size, false);
+        add_seg_list(block, merged_size);
         ////////////attention
 
         return block;
@@ -536,21 +598,21 @@ static block_t *coalesce_block(block_t *block) {
     if (prev_alloc_status == false && next_alloc_status == true) {
 
         size_t merged_size = get_size(block) + get_size(prev_block);
-        remove_from_list(block);
-        remove_from_list(prev_block);
+        remove_seg_list(block, size);
+        remove_seg_list(prev_block, get_size(prev_block));
         write_block(prev_block, merged_size, false);
-        add_free_list(prev_block);
+        add_seg_list(prev_block, merged_size);
 
         return prev_block;
     }
 
     size_t merged_size =
         get_size(block) + get_size(prev_block) + get_size(next_block);
-    remove_from_list(prev_block);
-    remove_from_list(block);
-    remove_from_list(next_block);
+    remove_seg_list(prev_block, get_size(prev_block));
+    remove_seg_list(block, size);
+    remove_seg_list(next_block, get_size(next_block));
     write_block(prev_block, merged_size, false);
-    add_free_list(prev_block);
+    add_seg_list(prev_block, merged_size);
 
     return prev_block;
 }
@@ -585,14 +647,16 @@ static block_t *extend_heap(size_t size) {
     // Initialize free block header/footer
     block_t *block = payload_to_header(bp);
     write_block(block, size, false);
-    add_free_list(block);
+    ///
+    add_seg_list(block, size);
+    // add_free_list(block);
 
     // Create new epilogue header
     block_t *block_next = find_next(block);
     write_epilogue(block_next);
 
     // Coalesce in case the previous block was free
-    block = coalesce_block(block);
+    block = coalesce_block(block, size);
 
     return block;
 }
@@ -620,7 +684,7 @@ static void split_block(block_t *block, size_t asize) {
 
         block_next = find_next(block);
         write_block(block_next, block_size - asize, false);
-        add_free_list(block_next);
+        add_seg_list(block_next, block_size - asize);
     }
 
     dbg_ensures(get_alloc(block));
@@ -639,11 +703,14 @@ static void split_block(block_t *block, size_t asize) {
  */
 static block_t *find_fit(size_t asize) {
     block_t *block;
+    block_t *current_head;
+    for (size_t i = search_seg_by_size(asize); i < LIST_NUM; i++) {
+        current_head = seglist[i];
+        for (block = current_head; block != NULL; block = *get_next(block)) {
 
-    for (block = free_head; block != NULL; block = *get_next(block)) {
-
-        if (!(get_alloc(block)) && (asize <= get_size(block))) {
-            return block;
+            if (!(get_alloc(block)) && (asize <= get_size(block))) {
+                return block;
+            }
         }
     }
     return NULL; // no fit found
@@ -683,6 +750,15 @@ static bool mm_check_coalescing(void) {
          current = find_next(current)) {
 
         if (get_alloc(current) == false) {
+            if (current == heap_start) {
+                if (get_alloc(find_next(current)) == false) {
+                    return false;
+
+                } else {
+                    return true;
+                }
+            }
+
             if (get_alloc((footer_to_header(find_prev_footer(current)))) ==
                     false ||
                 get_alloc(find_next(current)) == false) {
@@ -773,11 +849,15 @@ bool mm_checkheap(int line) {
  * @return
  */
 bool mm_init(void) {
+
     // Create the initial empty heap
     word_t *start = (word_t *)(mem_sbrk(2 * wsize));
 
     if (start == (void *)-1) {
         return false;
+    }
+    for (int i = 0; i < LIST_NUM; i++) {
+        seglist[i] = NULL;
     }
 
     /*
@@ -856,7 +936,7 @@ void *malloc(size_t size) {
     // Mark block as allocated
     size_t block_size = get_size(block);
     write_block(block, block_size, true);
-    remove_from_list(block);
+    remove_seg_list(block, block_size);
 
     // Try to split the block if too large
     split_block(block, asize);
@@ -892,10 +972,10 @@ void free(void *bp) {
 
     // Mark the block as free
     write_block(block, size, false);
-    add_free_list(block);
+    add_seg_list(block, size);
 
     // Try to coalesce the block with its neighbors
-    coalesce_block(block);
+    coalesce_block(block, size);
 
     dbg_ensures(mm_checkheap(__LINE__));
 }
