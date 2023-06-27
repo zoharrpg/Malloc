@@ -145,7 +145,7 @@ typedef struct block {
      */
 } block_t;
 #define LIST_NUM 15
-#define MAX_SIZE 32768
+#define MAX_SIZE 262144
 
 /* Global variables */
 
@@ -413,7 +413,7 @@ static void remove_from_list(block_t *block, block_t **free_head) {
  */
 static block_t **search_seg(block_t *block) {
     size_t size = get_size(block);
-    if (size >= MAX_SIZE) {
+    if (size > MAX_SIZE) {
         return &seglist[LIST_NUM - 1];
     }
 
@@ -429,7 +429,7 @@ static block_t **search_seg(block_t *block) {
     return NULL;
 }
 static size_t search_seg_by_size(size_t size) {
-    if (size >= MAX_SIZE) {
+    if (size > MAX_SIZE) {
         return LIST_NUM - 1;
     }
 
@@ -785,6 +785,154 @@ static bool mm_check_boundaries(void) {
     return true;
 }
 
+static bool mm_check_header_footer(void){
+    
+    
+    
+    for (block_t* current = heap_start; get_size(current)>0;current = find_next(current)){
+        size_t size = get_size(current);
+        if(size < min_block_size){
+            return false;
+        }
+
+        word_t* footer = header_to_footer(current);
+        bool result = get_alloc(current) == extract_alloc(*footer);
+
+        if(!result){
+            return false;
+
+        }
+
+
+
+      
+    }
+    return true;
+
+}
+
+static bool mm_check_prev_next(void){
+    for (size_t i =0;i<LIST_NUM;i++){
+        block_t* current = seglist[i];
+      
+
+        while(current!=NULL&&(*get_next(current))!=NULL){
+            block_t * next = *get_next(current);
+            block_t * next_prev = *get_prev(next);
+
+            bool result = next_prev == current;
+
+            if(!result){
+                return false;
+            }
+
+            current =  next;
+
+
+
+        }
+    }
+
+    return true;
+}
+
+static bool mm_check_pointer_heap(void){
+    block_t *initial_heap = (block_t*)((char *)mem_heap_lo() + 8);
+    block_t *epilogue = (block_t*)((char *)mem_heap_hi() - 7);
+
+    for (size_t i =0;i<LIST_NUM;i++){
+        block_t* current = seglist[i];
+      
+
+        while(current!=NULL){
+            block_t * next = *get_next(current);
+            block_t * prev = *get_prev(current);
+
+            bool result_prev = (prev ==NULL) ||((prev>= initial_heap) &&( prev <=epilogue));
+            bool result_next = (next ==NULL) ||((next>= initial_heap) &&( next <= epilogue));
+
+            if(!(result_next && result_prev)){
+               
+                return false;
+            }
+
+            current =  next;
+
+
+
+        }
+    }
+    return true;
+
+
+}
+
+static bool mm_check_free_count(void){
+    size_t heap_count = 0;
+    size_t free_count = 0;
+     for (block_t* current = heap_start; get_size(current)>0;current = find_next(current)){
+        if(!get_alloc(current)){
+            heap_count++;
+        }
+
+
+    }
+
+    for (size_t i =0;i<LIST_NUM;i++){
+        block_t* current = seglist[i];
+
+         while(current!=NULL){
+            if(!get_alloc(current)){
+                free_count++;
+            }
+            current =  *get_next(current);
+
+         }
+
+    }
+
+    return heap_count == free_count;
+
+    
+
+}
+
+static bool mm_check_seglist_range(void){
+    for (size_t i =0;i<LIST_NUM;i++){
+         block_t* current = seglist[i];
+         size_t range_left = 1<<(i+4);
+        
+         size_t range_right = 1 << (i+5);
+          while(current!=NULL){
+            if(i==LIST_NUM-1){
+                bool result = get_size(current)>=MAX_SIZE;
+                if(!result){
+                   
+                    return false;
+                }
+            }else{
+                size_t size = get_size(current);
+                bool result = size > range_left &&  size<= range_right ;
+
+                if(!result){
+                    
+                    return false;
+                }
+
+
+            }
+           
+            current =  *get_next(current);
+
+         }
+
+
+    }
+    return true;
+
+}
+
+
 /**
  * @brief
  *
@@ -802,6 +950,11 @@ bool mm_checkheap(int line) {
     bool check_alignment = mm_check_alignment();
     bool check_coalescing = mm_check_coalescing();
     bool check_boundaries = mm_check_boundaries();
+    bool check_header_footer = mm_check_header_footer();
+    bool check_prev_next = mm_check_prev_next();
+   bool check_pointer_heap = mm_check_pointer_heap();
+   bool check_free_count = mm_check_free_count();
+   bool check_seglist_range = mm_check_seglist_range();
 
     if (!check_epi_pro) {
         printf("epi or pro logue error\n");
@@ -813,13 +966,37 @@ bool mm_checkheap(int line) {
         printf("coalescing error\n");
     }
     if (!check_boundaries) {
-        printf("boundaries error");
+        printf("boundaries error\n");
     }
+    if(!check_header_footer){
+        printf("header_footer error or size error\n");
+
+    }
+    if(!check_prev_next){
+         printf("Pointer error\n");
+
+    }
+    if(!check_pointer_heap){
+        printf("Pointer is not in the heap\n");
+
+
+    }
+
+    if(!check_free_count){
+         printf(" free count error\n");
+
+    }
+
+    if(!check_seglist_range){
+        printf("seglist range error\n");
+    }
+
+
 
     // return check_epi_pro && check_alignment&&
     // check_boundaries&&check_coalescing;
     return check_epi_pro && check_alignment && check_boundaries &&
-           check_coalescing;
+           check_coalescing&&check_header_footer&&check_pointer_heap&&check_free_count && check_seglist_range;
 
     /*
      * TODO: Delete this comment!
