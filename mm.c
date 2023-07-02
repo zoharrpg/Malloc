@@ -95,20 +95,39 @@ static const size_t dsize = 2 * wsize;
 static const size_t min_block_size = 2 * dsize;
 
 /**
- * TODO: explain what chunksize is
+ *The minimum size of memory that can request for heap
  * (Must be divisible by dsize)
  */
 static const size_t chunksize = (1 << 12);
 
 /**
- * TODO: explain what alloc_mask is
+ * TODO: Mask for extract the LSB 
  */
 static const word_t alloc_mask = 0x1;
 
 /**
  * TODO: explain what size_mask is
+ * mask for extracting bit excluding 4 bits from LSB
  */
 static const word_t size_mask = ~(word_t)0xF;
+ 
+ /**
+  * store pointer of next and prev block
+ */
+struct Pointer{
+    struct block *next;
+    struct block *prev;
+};
+
+/**
+ * union data type
+*/
+union Data{
+   struct Pointer pointer;
+   char payload[0];
+    
+
+};
 
 /** @brief Represents the header and payload of one block in the heap */
 typedef struct block {
@@ -135,7 +154,7 @@ typedef struct block {
      * should use a union to alias this zero-length array with another struct,
      * in order to store additional types of data in the payload memory.
      */
-    char payload[0];
+    union Data data;
 
     /*
      * TODO: delete or replace this comment once you've thought about it.
@@ -245,7 +264,7 @@ static size_t get_size(block_t *block) {
  * @return The corresponding block
  */
 static block_t *payload_to_header(void *bp) {
-    return (block_t *)((char *)bp - offsetof(block_t, payload));
+    return (block_t *)((char *)bp - offsetof(block_t, data.payload));
 }
 
 /**
@@ -257,7 +276,7 @@ static block_t *payload_to_header(void *bp) {
  */
 static void *header_to_payload(block_t *block) {
     dbg_requires(get_size(block) != 0);
-    return (void *)(block->payload);
+    return (void *)(block->data.payload);
 }
 
 /**
@@ -270,7 +289,7 @@ static void *header_to_payload(block_t *block) {
 static word_t *header_to_footer(block_t *block) {
     dbg_requires(get_size(block) != 0 &&
                  "Called header_to_footer on the epilogue block");
-    return (word_t *)(block->payload + get_size(block) - dsize);
+    return (word_t *)(block->data.payload + get_size(block) - dsize);
 }
 
 /**
@@ -338,15 +357,14 @@ static void write_epilogue(block_t *block) {
  * Get next pointer
  */
 static block_t **get_next(block_t *block) {
-    void *bp = header_to_payload(block);
-    return (block_t **)(bp);
+    return &(block->data.pointer.next);
 }
 /**
  * get previous pointer
  */
 static block_t **get_prev(block_t *block) {
-    void *bp = header_to_payload(block);
-    return ((block_t **)((char *)bp + 8));
+    
+   return &(block->data.pointer.prev);
 }
 /**
  * Add free list
@@ -536,34 +554,17 @@ static block_t *find_prev(block_t *block) {
 /**
  * @brief
  *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * colaescing prev, current, and next free block into one free block to reduce external fragmentation
+ * precoditions: colaesing when request more memory and free block
+ * postcondition: the mergerd block must be free and in the seglist
  *
- * @param[in] block
- * @return
+ * @param[in] block Address of block
+ * @param[in] size size of the block
+ * @return    adddree of merged free block
  */
 static block_t *coalesce_block(block_t *block, size_t size) {
 
-    /*
-     * TODO: delete or replace this comment once you're done.
-     *
-     * Before you start, it will be helpful to review the "Dynamic Memory
-     * Allocation: Basic" lecture, and especially the four coalescing
-     * cases that are described.
-     *
-     * The actual content of the function will probably involve a call to
-     * find_prev(), and multiple calls to write_block(). For examples of how
-     * to use write_block(), take a look at split_block().
-     *
-     * Please do not reference code from prior semesters for this, including
-     * old versions of the 213 website. We also discourage you from looking
-     * at the malloc code in CS:APP and K&R, which make heavy use of macros
-     * and which we no longer consider to be good style.
-     *
-     *
-     */
+   
 
     word_t *prev_foot = find_prev_footer(block);
 
@@ -618,15 +619,12 @@ static block_t *coalesce_block(block_t *block, size_t size) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * @brief extend the heap by given size
+ * precodition: There is no approiate free block to be allocated
+ * postcodition: a larger size of heap
  *
  * @param[in] size
- * @return
+ * @return the address of the requested the free block
  */
 static block_t *extend_heap(size_t size) {
     void *bp;
@@ -662,15 +660,13 @@ static block_t *extend_heap(size_t size) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * @brief splite the free portion of the allocated block and add it into seglist 
+ * precondition: there is a free portion of the block
+ * postcondition: the free portion of the block become a block and is added to the list
  *
  * @param[in] block
  * @param[in] asize
+ * @return void
  */
 static void split_block(block_t *block, size_t asize) {
     dbg_requires(get_alloc(block));
@@ -691,15 +687,12 @@ static void split_block(block_t *block, size_t asize) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * @brief find first fit free block thank can be allocated
+ * precondition: allocating a memory
+ * postition: find the approiated free block
  *
  * @param[in] asize
- * @return
+ * @return the address of the block
  */
 static block_t *find_fit(size_t asize) {
     block_t *block;
@@ -716,6 +709,9 @@ static block_t *find_fit(size_t asize) {
     return NULL; // no fit found
 }
 
+/**
+ * check epi and pro
+*/
 static bool mm_check_epi_pro_logue(void) {
     word_t *initial_heap = mem_heap_lo();
     if (extract_size(*initial_heap) != 0 ||
@@ -731,6 +727,9 @@ static bool mm_check_epi_pro_logue(void) {
     return true;
 }
 
+/**
+ * check alignment
+*/
 static bool mm_check_alignment(void) {
     block_t *current;
     for (current = heap_start; get_size(current) > 0;
@@ -934,15 +933,11 @@ static bool mm_check_seglist_range(void){
 
 
 /**
- * @brief
+ * @brief 
  *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
  *
  * @param[in] line
- * @return
+ * @return true if the heap is valid without any error, otherwise false
  */
 bool mm_checkheap(int line) {
 
@@ -1016,13 +1011,11 @@ bool mm_checkheap(int line) {
 }
 
 /**
- * @brief
+ * @brief initialize the heap, prologue and epilogue
+ * precodition: initialization
+ * postcondition: there is a available heap
  *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
- *
+ * @param[in] void
  * @return
  */
 bool mm_init(void) {
@@ -1058,15 +1051,12 @@ bool mm_init(void) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * @brief Allocate memory from heap, splite and coalesce the approiated block and return porinter of the requested block
+ * preconidtion: the heap has available memory size
+ * postconditon: return the pointer of the block and maintain the seglist
  *
  * @param[in] size
- * @return
+ * @return pointer of the requested block
  */
 void *malloc(size_t size) {
     dbg_requires(mm_checkheap(__LINE__));
@@ -1125,14 +1115,11 @@ void *malloc(size_t size) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
- *
+ * @brief Free the the allocated memory
+ * precodition: the block is allocated
+ * postcondition: the allocated block is free
  * @param[in] bp
+ * @return void
  */
 void free(void *bp) {
     dbg_requires(mm_checkheap(__LINE__));
@@ -1158,13 +1145,9 @@ void free(void *bp) {
 }
 
 /**
- * @brief
- *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
- *
+ * @brief attempts to resize the memory block pointed to by ptr that was previously allocated with a call to malloc or calloc.
+ * precondition: the heap has available memory size
+ * postconditon: return the pointer of the block and maintain the seglist
  * @param[in] ptr
  * @param[in] size
  * @return
@@ -1207,12 +1190,10 @@ void *realloc(void *ptr, size_t size) {
 }
 
 /**
- * @brief
+ * @brief allocates the requested memory and sets allocated memory to zero and returns a pointer to it.
  *
- * <What does this function do?>
- * <What are the function's arguments?>
- * <What is the function's return value?>
- * <Are there any preconditions or postconditions?>
+ * precondition: the heap has available memory size
+ * postconditon: return the pointer of the block and maintain the seglist
  *
  * @param[in] elements
  * @param[in] size
