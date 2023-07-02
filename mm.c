@@ -101,7 +101,7 @@ static const size_t min_block_size = 2 * dsize;
 static const size_t chunksize = (1 << 12);
 
 /**
- * TODO: Mask for extract the LSB 
+ * TODO: Mask for extract the LSB
  */
 static const word_t alloc_mask = 0x1;
 
@@ -110,23 +110,21 @@ static const word_t alloc_mask = 0x1;
  * mask for extracting bit excluding 4 bits from LSB
  */
 static const word_t size_mask = ~(word_t)0xF;
- 
- /**
-  * store pointer of next and prev block
+
+/**
+ * store pointer of next and prev block
  */
-struct Pointer{
+struct Pointer {
     struct block *next;
     struct block *prev;
 };
 
 /**
  * union data type
-*/
-union Data{
-   struct Pointer pointer;
-   char payload[0];
-    
-
+ */
+union Data {
+    struct Pointer pointer;
+    char payload[0];
 };
 
 /** @brief Represents the header and payload of one block in the heap */
@@ -363,8 +361,8 @@ static block_t **get_next(block_t *block) {
  * get previous pointer
  */
 static block_t **get_prev(block_t *block) {
-    
-   return &(block->data.pointer.prev);
+
+    return &(block->data.pointer.prev);
 }
 /**
  * Add free list
@@ -554,17 +552,15 @@ static block_t *find_prev(block_t *block) {
 /**
  * @brief
  *
- * colaescing prev, current, and next free block into one free block to reduce external fragmentation
- * precoditions: colaesing when request more memory and free block
- * postcondition: the mergerd block must be free and in the seglist
+ * colaescing prev, current, and next free block into one free block to reduce
+ * external fragmentation precoditions: colaesing when request more memory and
+ * free block postcondition: the mergerd block must be free and in the seglist
  *
  * @param[in] block Address of block
  * @param[in] size size of the block
  * @return    adddree of merged free block
  */
 static block_t *coalesce_block(block_t *block, size_t size) {
-
-   
 
     word_t *prev_foot = find_prev_footer(block);
 
@@ -660,9 +656,10 @@ static block_t *extend_heap(size_t size) {
 }
 
 /**
- * @brief splite the free portion of the allocated block and add it into seglist 
+ * @brief splite the free portion of the allocated block and add it into seglist
  * precondition: there is a free portion of the block
- * postcondition: the free portion of the block become a block and is added to the list
+ * postcondition: the free portion of the block become a block and is added to
+ * the list
  *
  * @param[in] block
  * @param[in] asize
@@ -711,7 +708,7 @@ static block_t *find_fit(size_t asize) {
 
 /**
  * check epi and pro
-*/
+ */
 static bool mm_check_epi_pro_logue(void) {
     word_t *initial_heap = mem_heap_lo();
     if (extract_size(*initial_heap) != 0 ||
@@ -729,7 +726,7 @@ static bool mm_check_epi_pro_logue(void) {
 
 /**
  * check alignment
-*/
+ */
 static bool mm_check_alignment(void) {
     block_t *current;
     for (current = heap_start; get_size(current) > 0;
@@ -784,156 +781,129 @@ static bool mm_check_boundaries(void) {
     return true;
 }
 
-static bool mm_check_header_footer(void){
-    
-    
-    
-    for (block_t* current = heap_start; get_size(current)>0;current = find_next(current)){
+static bool mm_check_header_footer(void) {
+
+    for (block_t *current = heap_start; get_size(current) > 0;
+         current = find_next(current)) {
         size_t size = get_size(current);
-        if(size < min_block_size){
+        if (size < min_block_size) {
             return false;
         }
 
-        word_t* footer = header_to_footer(current);
+        word_t *footer = header_to_footer(current);
         bool result = get_alloc(current) == extract_alloc(*footer);
 
-        if(!result){
+        if (!result) {
             return false;
-
         }
-
-
-
-      
     }
     return true;
-
 }
 
-static bool mm_check_prev_next(void){
-    for (size_t i =0;i<LIST_NUM;i++){
-        block_t* current = seglist[i];
-      
+static bool mm_check_prev_next(void) {
+    for (size_t i = 0; i < LIST_NUM; i++) {
+        block_t *current = seglist[i];
 
-        while(current!=NULL&&(*get_next(current))!=NULL){
-            block_t * next = *get_next(current);
-            block_t * next_prev = *get_prev(next);
+        while (current != NULL && (*get_next(current)) != NULL) {
+            block_t *next = *get_next(current);
+            block_t *next_prev = *get_prev(next);
 
             bool result = next_prev == current;
 
-            if(!result){
+            if (!result) {
                 return false;
             }
 
-            current =  next;
-
-
-
+            current = next;
         }
     }
 
     return true;
 }
 
-static bool mm_check_pointer_heap(void){
-    block_t *initial_heap = (block_t*)((char *)mem_heap_lo() + 8);
-    block_t *epilogue = (block_t*)((char *)mem_heap_hi() - 7);
+static bool mm_check_pointer_heap(void) {
+    block_t *initial_heap = (block_t *)((char *)mem_heap_lo() + 8);
+    block_t *epilogue = (block_t *)((char *)mem_heap_hi() - 7);
 
-    for (size_t i =0;i<LIST_NUM;i++){
-        block_t* current = seglist[i];
-      
+    for (size_t i = 0; i < LIST_NUM; i++) {
+        block_t *current = seglist[i];
 
-        while(current!=NULL){
-            block_t * next = *get_next(current);
-            block_t * prev = *get_prev(current);
+        while (current != NULL) {
+            block_t *next = *get_next(current);
+            block_t *prev = *get_prev(current);
 
-            bool result_prev = (prev ==NULL) ||((prev>= initial_heap) &&( prev <=epilogue));
-            bool result_next = (next ==NULL) ||((next>= initial_heap) &&( next <= epilogue));
+            bool result_prev = (prev == NULL) ||
+                               ((prev >= initial_heap) && (prev <= epilogue));
+            bool result_next = (next == NULL) ||
+                               ((next >= initial_heap) && (next <= epilogue));
 
-            if(!(result_next && result_prev)){
-               
+            if (!(result_next && result_prev)) {
+
                 return false;
             }
 
-            current =  next;
-
-
-
+            current = next;
         }
     }
     return true;
-
-
 }
 
-static bool mm_check_free_count(void){
+static bool mm_check_free_count(void) {
     size_t heap_count = 0;
     size_t free_count = 0;
-     for (block_t* current = heap_start; get_size(current)>0;current = find_next(current)){
-        if(!get_alloc(current)){
+    for (block_t *current = heap_start; get_size(current) > 0;
+         current = find_next(current)) {
+        if (!get_alloc(current)) {
             heap_count++;
         }
-
-
     }
 
-    for (size_t i =0;i<LIST_NUM;i++){
-        block_t* current = seglist[i];
+    for (size_t i = 0; i < LIST_NUM; i++) {
+        block_t *current = seglist[i];
 
-         while(current!=NULL){
-            if(!get_alloc(current)){
+        while (current != NULL) {
+            if (!get_alloc(current)) {
                 free_count++;
             }
-            current =  *get_next(current);
-
-         }
-
+            current = *get_next(current);
+        }
     }
 
     return heap_count == free_count;
-
-    
-
 }
 
-static bool mm_check_seglist_range(void){
-    for (size_t i =0;i<LIST_NUM;i++){
-         block_t* current = seglist[i];
-         size_t range_left = 1<<(i+4);
-        
-         size_t range_right = 1 << (i+5);
-          while(current!=NULL){
-            if(i==LIST_NUM-1){
-                bool result = get_size(current)>=MAX_SIZE;
-                if(!result){
-                   
+static bool mm_check_seglist_range(void) {
+    for (size_t i = 0; i < LIST_NUM; i++) {
+        block_t *current = seglist[i];
+        size_t range_left = 1 << (i + 4);
+
+        size_t range_right = 1 << (i + 5);
+        while (current != NULL) {
+            if (i == LIST_NUM - 1) {
+                bool result = get_size(current) >= MAX_SIZE;
+                if (!result) {
+
                     return false;
                 }
-            }else{
+            } else {
                 size_t size = get_size(current);
-                bool result = size > range_left &&  size<= range_right ;
+                bool result = size > range_left && size <= range_right;
 
-                if(!result){
-                    
+                if (!result) {
+
                     return false;
                 }
-
-
             }
-           
-            current =  *get_next(current);
 
-         }
-
-
+            current = *get_next(current);
+        }
     }
     return true;
-
 }
 
-
 /**
- * @brief 
+ * @brief check heap whether heap is valid without any error
+ * check freelist is valid and each of the block is valid
  *
  *
  * @param[in] line
@@ -947,9 +917,9 @@ bool mm_checkheap(int line) {
     bool check_boundaries = mm_check_boundaries();
     bool check_header_footer = mm_check_header_footer();
     bool check_prev_next = mm_check_prev_next();
-   bool check_pointer_heap = mm_check_pointer_heap();
-   bool check_free_count = mm_check_free_count();
-   bool check_seglist_range = mm_check_seglist_range();
+    bool check_pointer_heap = mm_check_pointer_heap();
+    bool check_free_count = mm_check_free_count();
+    bool check_seglist_range = mm_check_seglist_range();
 
     if (!check_epi_pro) {
         printf("epi or pro logue error\n");
@@ -963,35 +933,29 @@ bool mm_checkheap(int line) {
     if (!check_boundaries) {
         printf("boundaries error\n");
     }
-    if(!check_header_footer){
+    if (!check_header_footer) {
         printf("header_footer error or size error\n");
-
     }
-    if(!check_prev_next){
-         printf("Pointer error\n");
-
+    if (!check_prev_next) {
+        printf("Pointer error\n");
     }
-    if(!check_pointer_heap){
+    if (!check_pointer_heap) {
         printf("Pointer is not in the heap\n");
-
-
     }
 
-    if(!check_free_count){
-         printf(" free count error\n");
-
+    if (!check_free_count) {
+        printf(" free count error\n");
     }
 
-    if(!check_seglist_range){
+    if (!check_seglist_range) {
         printf("seglist range error\n");
     }
-
-
 
     // return check_epi_pro && check_alignment&&
     // check_boundaries&&check_coalescing;
     return check_epi_pro && check_alignment && check_boundaries &&
-           check_coalescing&&check_header_footer&&check_pointer_heap&&check_free_count && check_seglist_range;
+           check_coalescing && check_header_footer && check_pointer_heap &&
+           check_free_count && check_seglist_range;
 
     /*
      * TODO: Delete this comment!
@@ -1051,9 +1015,10 @@ bool mm_init(void) {
 }
 
 /**
- * @brief Allocate memory from heap, splite and coalesce the approiated block and return porinter of the requested block
- * preconidtion: the heap has available memory size
- * postconditon: return the pointer of the block and maintain the seglist
+ * @brief Allocate memory from heap, splite and coalesce the approiated block
+ * and return porinter of the requested block preconidtion: the heap has
+ * available memory size postconditon: return the pointer of the block and
+ * maintain the seglist
  *
  * @param[in] size
  * @return pointer of the requested block
@@ -1145,9 +1110,10 @@ void free(void *bp) {
 }
 
 /**
- * @brief attempts to resize the memory block pointed to by ptr that was previously allocated with a call to malloc or calloc.
- * precondition: the heap has available memory size
- * postconditon: return the pointer of the block and maintain the seglist
+ * @brief attempts to resize the memory block pointed to by ptr that was
+ * previously allocated with a call to malloc or calloc. precondition: the heap
+ * has available memory size postconditon: return the pointer of the block and
+ * maintain the seglist
  * @param[in] ptr
  * @param[in] size
  * @return
@@ -1190,7 +1156,8 @@ void *realloc(void *ptr, size_t size) {
 }
 
 /**
- * @brief allocates the requested memory and sets allocated memory to zero and returns a pointer to it.
+ * @brief allocates the requested memory and sets allocated memory to zero and
+ * returns a pointer to it.
  *
  * precondition: the heap has available memory size
  * postconditon: return the pointer of the block and maintain the seglist
