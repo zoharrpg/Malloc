@@ -461,11 +461,11 @@ static size_t search_seg_by_size(size_t size) {
     return 1;
 }
 
-static void add_seg_list(block_t *block, size_t size) {
+static void add_seg_list(block_t *block) {
     block_t **head = search_seg(block);
     add_free_list(block, head);
 }
-static void remove_seg_list(block_t *block, size_t size) {
+static void remove_seg_list(block_t *block) {
     block_t **head = search_seg(block);
     remove_from_list(block, head);
 }
@@ -582,10 +582,10 @@ static block_t *coalesce_block(block_t *block, size_t size) {
 
     if (prev_alloc_status == true && next_alloc_status == false) {
         size_t merged_size = get_size(block) + get_size(next_block);
-        remove_seg_list(next_block, get_size(next_block));
-        remove_seg_list(block, size);
+        remove_seg_list(next_block);
+        remove_seg_list(block);
         write_block(block, merged_size, false);
-        add_seg_list(block, merged_size);
+        add_seg_list(block);
         ////////////attention
 
         return block;
@@ -595,21 +595,21 @@ static block_t *coalesce_block(block_t *block, size_t size) {
     if (prev_alloc_status == false && next_alloc_status == true) {
 
         size_t merged_size = get_size(block) + get_size(prev_block);
-        remove_seg_list(block, size);
-        remove_seg_list(prev_block, get_size(prev_block));
+        remove_seg_list(block);
+        remove_seg_list(prev_block);
         write_block(prev_block, merged_size, false);
-        add_seg_list(prev_block, merged_size);
+        add_seg_list(prev_block);
 
         return prev_block;
     }
 
     size_t merged_size =
         get_size(block) + get_size(prev_block) + get_size(next_block);
-    remove_seg_list(prev_block, get_size(prev_block));
-    remove_seg_list(block, size);
-    remove_seg_list(next_block, get_size(next_block));
+    remove_seg_list(prev_block);
+    remove_seg_list(block);
+    remove_seg_list(next_block);
     write_block(prev_block, merged_size, false);
-    add_seg_list(prev_block, merged_size);
+    add_seg_list(prev_block);
 
     return prev_block;
 }
@@ -642,7 +642,7 @@ static block_t *extend_heap(size_t size) {
     block_t *block = payload_to_header(bp);
     write_block(block, size, false);
     ///
-    add_seg_list(block, size);
+    add_seg_list(block);
     // add_free_list(block);
 
     // Create new epilogue header
@@ -677,7 +677,7 @@ static void split_block(block_t *block, size_t asize) {
 
         block_next = find_next(block);
         write_block(block_next, block_size - asize, false);
-        add_seg_list(block_next, block_size - asize);
+        add_seg_list(block_next);
     }
 
     dbg_ensures(get_alloc(block));
@@ -1068,7 +1068,7 @@ void *malloc(size_t size) {
     // Mark block as allocated
     size_t block_size = get_size(block);
     write_block(block, block_size, true);
-    remove_seg_list(block, block_size);
+    remove_seg_list(block);
 
     // Try to split the block if too large
     split_block(block, asize);
@@ -1101,7 +1101,7 @@ void free(void *bp) {
 
     // Mark the block as free
     write_block(block, size, false);
-    add_seg_list(block, size);
+    add_seg_list(block);
 
     // Try to coalesce the block with its neighbors
     coalesce_block(block, size);
