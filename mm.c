@@ -92,7 +92,7 @@ static const size_t wsize = sizeof(word_t);
 static const size_t dsize = 2 * wsize;
 
 /** @brief Minimum block size (bytes) */
-static const size_t min_block_size = 2*dsize;
+static const size_t min_block_size = 2 * dsize;
 
 /**
  *The minimum size of memory that can request for heap
@@ -495,14 +495,11 @@ static void modify_next_prev_state(block_t *block, bool alloc) {
     word |= (word_t)(alloc << 1);
     next_header->header = word;
 }
-static bool extract_prev_alloc(word_t header){
-    return (bool)((header & prev_alloc_mask)>>1);
-
+static bool extract_prev_alloc(word_t header) {
+    return (bool)((header & prev_alloc_mask) >> 1);
 }
 static bool get_prev_alloc(block_t *block) {
     return extract_prev_alloc(block->header);
-
-   
 }
 /**
  * @brief Writes a block starting at the given address.
@@ -521,16 +518,14 @@ static void write_block(block_t *block, size_t size, bool alloc) {
     dbg_requires(size > 0);
 
     bool status = get_prev_alloc(block);
-    block->header = (pack(size, alloc)|((word_t)status<<1));
-    
+    block->header = (pack(size, alloc) | ((word_t)status << 1));
 
     if (!alloc) {
         word_t *footerp = header_to_footer(block);
-        *footerp = (pack(size, alloc)|((word_t)status<<1));
+        *footerp = (pack(size, alloc) | ((word_t)status << 1));
     }
     modify_next_prev_state(block, alloc);
 }
-
 
 /**
  * @brief Finds the footer of the previous block on the heap.
@@ -564,9 +559,6 @@ static block_t *find_prev(block_t *block) {
     return footer_to_header(footerp);
 }
 
-
-
-
 /*
  * ---------------------------------------------------------------------------
  *                        END SHORT HELPER FUNCTIONS
@@ -592,13 +584,11 @@ static block_t *coalesce_block(block_t *block, size_t size) {
 
     block_t *next_block = find_next(block);
     bool prev_alloc_status;
-    if(block==heap_start){
+    if (block == heap_start) {
         prev_alloc_status = true;
-    }else{
+    } else {
         prev_alloc_status = get_prev_alloc(block);
-
     }
-    
 
     bool next_alloc_status = get_alloc(next_block);
 
@@ -937,7 +927,7 @@ static bool mm_check_seglist_range(void) {
  */
 bool mm_checkheap(int line) {
 
-    //bool check_epi_pro = mm_check_epi_pro_logue();
+    // bool check_epi_pro = mm_check_epi_pro_logue();
     bool check_alignment = mm_check_alignment();
     // bool check_coalescing = mm_check_coalescing();
     // bool check_boundaries = mm_check_boundaries();
@@ -979,8 +969,8 @@ bool mm_checkheap(int line) {
 
     // return check_epi_pro && check_alignment&&
     // check_boundaries&&check_coalescing;
-    // 
-    // return check_epi_pro && 
+    //
+    // return check_epi_pro &&
     return check_alignment;
     //        check_coalescing && check_header_footer && check_pointer_heap &&
     //        check_free_count && check_seglist_range;
@@ -1027,12 +1017,11 @@ bool mm_init(void) {
      * they correspond to a block footer and header respectively?
      */
 
-    start[0] = pack(0, true); // Heap prologue (block footer)
-    start[1] = (pack(0, true)|0x2); // Heap epilogue (block header)
+    start[0] = pack(0, true);         // Heap prologue (block footer)
+    start[1] = (pack(0, true) | 0x2); // Heap epilogue (block header)
 
     // Heap starts with first "block header", currently the epilogue
     heap_start = (block_t *)&(start[1]);
-    
 
     // Extend the empty heap with a free block of chunksize bytes
     if (extend_heap(chunksize) == NULL) {
@@ -1075,9 +1064,8 @@ void *malloc(size_t size) {
 
     // Adjust block size to include overhead and to meet alignment requirements
     asize = round_up(size + wsize, dsize);
-    if (asize<min_block_size){
+    if (asize < min_block_size) {
         asize = min_block_size;
-
     }
 
     // Search the free list for a fit
