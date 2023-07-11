@@ -98,7 +98,7 @@ static const size_t min_block_size = dsize;
  *The minimum size of memory that can request for heap
  * (Must be divisible by dsize)
  */
-static const size_t chunksize = (1 << 12);
+static const size_t chunksize = (1 << 12);// 9
 
 /**
  * TODO: Mask for extract the LSB
@@ -121,8 +121,6 @@ struct Pointer {
 struct Miniblock {
     struct block *next;
 };
-static size_t count;
-static size_t count2;
 
 /**
  * union data type
@@ -167,8 +165,8 @@ typedef struct block {
      * which functions actually use the data contained in footers?
      */
 } block_t;
-#define LIST_NUM 15
-#define MAX_SIZE 262144
+#define LIST_NUM 14
+#define MAX_SIZE 131072
 
 /* Global variables */
 
@@ -181,7 +179,7 @@ static const word_t prev_alloc_mask = 0x2;
 
 static const word_t prev_small_mask = 0x3;
 
-static block_t *small_block_start = NULL;
+static block_t *small_block_start;
 
 /** the head of the free list*/
 
@@ -1150,10 +1148,7 @@ bool mm_init(void) {
  * @return pointer of the requested block
  */
 void *malloc(size_t size) {
-    if (size == 5) {
-        count2++;
-    }
-    count++;
+
     dbg_requires(mm_checkheap(__LINE__));
 
     size_t asize;      // Adjusted block size
@@ -1227,7 +1222,6 @@ void *malloc(size_t size) {
  * @return void
  */
 void free(void *bp) {
-    count++;
     dbg_requires(mm_checkheap(__LINE__));
 
     if (bp == NULL) {
