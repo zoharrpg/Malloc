@@ -16,7 +16,7 @@
  *
  *************************************************************************
  *
- * @author Your Name <andrewid@andrew.cmu.edu>
+ * @author Junshang Jia <junshanj@andrew.cmu.edu>
  */
 
 #include <assert.h>
@@ -98,7 +98,7 @@ static const size_t min_block_size = dsize;
  *The minimum size of memory that can request for heap
  * (Must be divisible by dsize)
  */
-static const size_t chunksize = (1 << 12);// 9
+static const size_t chunksize = (1 << 9); // 9
 
 /**
  * TODO: Mask for extract the LSB
@@ -166,7 +166,7 @@ typedef struct block {
      */
 } block_t;
 #define LIST_NUM 14
-#define MAX_SIZE 131072
+#define MAX_SIZE 32768
 
 /* Global variables */
 
@@ -441,12 +441,19 @@ static void remove_from_list(block_t *block, block_t **free_head) {
 static block_t **search_seg(block_t *block) {
     size_t size = get_size(block);
     if (size > MAX_SIZE) {
-        return &seglist[LIST_NUM - 1];
+        return &seglist[LIST_NUM - 2];
     }
 
-    for (size_t i = 0; i < LIST_NUM; i++) {
+    for (size_t i = 0; i < 5; i++) {
+        size_t current_size = 32 + (16 * i);
+        if (current_size >= size) {
+            return &seglist[i];
+        }
+    }
 
-        size_t current_size = 1 << (i + 5);
+    for (size_t i = 5; i < LIST_NUM; i++) {
+
+        size_t current_size = 1 << (i + 2);
         if (current_size >= size) {
 
             return &seglist[i];
@@ -459,16 +466,21 @@ static size_t search_seg_by_size(size_t size) {
     if (size > MAX_SIZE) {
         return LIST_NUM - 1;
     }
+    for (size_t i = 0; i < 5; i++) {
+        size_t current_size = 32 + (16 * i);
+        if (current_size >= size) {
+            return i;
+        }
+    }
 
-    for (size_t i = 0; i < LIST_NUM; i++) {
+    for (size_t i = 5; i < LIST_NUM; i++) {
 
-        size_t current_size = 1 << (i + 5);
+        size_t current_size = 1 << (i + 2);
         if (current_size >= size) {
 
             return i;
         }
     }
-    printf("This is a big error\n");
     return 1;
 }
 
@@ -530,19 +542,19 @@ static bool get_prev_small(block_t *block) {
  * @param[in] size The size of the new block
  * @param[in] alloc The allocation status of the new block
  */
-static void write_block(block_t *block, size_t size, bool alloc) {
+static void write_block(block_t *block, size_t size, bool alloc,bool prev_alloc, bool mini_status) {
     dbg_requires(block != NULL);
     dbg_requires(size > 0);
 
-    bool status = get_prev_alloc(block);
-    bool mini_status = get_prev_small(block);
-    block->header = (pack(size, alloc) | ((word_t)status << 1)) |
+    
+    block->header = (pack(size, alloc) | ((word_t)prev_alloc << 1)) |
                     ((word_t)mini_status << 2);
 
     if (!alloc && size != min_block_size) {
 
         word_t *footerp = header_to_footer(block);
-        *footerp = (pack(size, alloc) | ((word_t)status << 1));
+        *footerp = (pack(size, alloc) | ((word_t)prev_alloc << 1))| ((word_t)mini_status << 2);
+
     }
     modify_next_prev_state(block, alloc);
 }
@@ -652,6 +664,12 @@ static block_t *coalesce_block(block_t *block, size_t size) {
     bool next_alloc_status = get_alloc(next_block);
 
     if (prev_alloc_status == true && next_alloc_status == true) {
+        if (size == min_block_size) {
+            add_small_list(block);
+
+        } else {
+            add_seg_list(block);
+        }
         return block;
     }
 
@@ -662,12 +680,9 @@ static block_t *coalesce_block(block_t *block, size_t size) {
         } else {
             remove_seg_list(next_block);
         }
-        if (get_size(block) == min_block_size) {
-            remove_small_list(block);
-        } else {
-            remove_seg_list(block);
-        }
-        write_block(block, merged_size, false);
+        bool pre_alloc = get_prev_alloc(block);
+        bool mini_status= get_prev_small(block);
+        write_block(block, merged_size, false,pre_alloc,mini_status);
         add_seg_list(block);
         ////////////attention
 
@@ -684,19 +699,16 @@ static block_t *coalesce_block(block_t *block, size_t size) {
     if (prev_alloc_status == false && next_alloc_status == true) {
 
         size_t merged_size = get_size(block) + get_size(prev_block);
-        if (get_size(block) == min_block_size) {
-            remove_small_list(block);
-        } else {
-            remove_seg_list(block);
-        }
         if (is_prev_small) {
             remove_small_list(prev_block);
 
         } else {
             remove_seg_list(prev_block);
         }
+        bool pre_alloc = get_prev_alloc(prev_block);
+        bool mini_status= get_prev_small(prev_block);
 
-        write_block(prev_block, merged_size, false);
+        write_block(prev_block, merged_size, false,pre_alloc,mini_status);
         add_seg_list(prev_block);
 
         return prev_block;
@@ -710,18 +722,15 @@ static block_t *coalesce_block(block_t *block, size_t size) {
     } else {
         remove_seg_list(prev_block);
     }
-    if (get_size(block) == min_block_size) {
-        remove_small_list(block);
-    } else {
-        remove_seg_list(block);
-    }
     if (get_size(next_block) == min_block_size) {
         remove_small_list(next_block);
     } else {
         remove_seg_list(next_block);
     }
+      bool pre_alloc = get_prev_alloc(prev_block);
+        bool mini_status= get_prev_small(prev_block);
 
-    write_block(prev_block, merged_size, false);
+    write_block(prev_block, merged_size, false,pre_alloc,mini_status);
     add_seg_list(prev_block);
 
     return prev_block;
@@ -753,9 +762,9 @@ static block_t *extend_heap(size_t size) {
 
     // Initialize free block header/footer
     block_t *block = payload_to_header(bp);
-    write_block(block, size, false);
+
+    write_block(block, size, false,get_prev_alloc(block),get_prev_small(block));
     ///
-    add_seg_list(block);
     // add_free_list(block);
 
     // Create new epilogue header
@@ -787,17 +796,19 @@ static void split_block(block_t *block, size_t asize) {
     if ((block_size - asize) >= min_block_size) {
         if ((block_size - asize) == min_block_size) {
             block_t *block_next;
-            write_block(block, asize, true);
+            write_block(block, asize, true,get_prev_alloc(block),get_prev_small(block));
             block_next = find_next(block);
-            write_block(block_next, block_size - asize, false);
+            bool is_miniblock = asize == min_block_size;
+            write_block(block_next, block_size - asize, false,true,is_miniblock);
             add_small_list(block_next);
 
         } else {
             block_t *block_next;
-            write_block(block, asize, true);
+            write_block(block, asize, true,get_prev_alloc(block),get_prev_small(block));
+            bool is_miniblock = asize == min_block_size;
 
             block_next = find_next(block);
-            write_block(block_next, block_size - asize, false);
+            write_block(block_next, block_size - asize, false,true,is_miniblock);
             add_seg_list(block_next);
         }
     }
@@ -814,18 +825,32 @@ static void split_block(block_t *block, size_t asize) {
  * @return the address of the block
  */
 static block_t *find_fit(size_t asize) {
-    block_t *block;
+    block_t *selected = NULL;
+    size_t limit = 30;
+    block_t *block = NULL;;
     block_t *current_head;
     for (size_t i = search_seg_by_size(asize); i < LIST_NUM; i++) {
         current_head = seglist[i];
-        for (block = current_head; block != NULL; block = *get_next(block)) {
+        size_t count = 0;
+        for (block = current_head; block != NULL && count < limit;
+             block = *get_next(block)) {
 
             if (!(get_alloc(block)) && (asize <= get_size(block))) {
-                return block;
+                if (selected == NULL) {
+                    selected = block;
+                } else {
+                    if (get_size(block) < get_size(selected)) {
+                        selected = block;
+                    }
+                }
             }
+            count++;
+        }
+        if (selected != NULL) {
+            break;
         }
     }
-    return NULL; // no fit found
+    return selected; // no fit found
 }
 
 /**
@@ -1172,6 +1197,7 @@ void *malloc(size_t size) {
 
     // Adjust block size to include overhead and to meet alignment requirements
     asize = round_up(size + wsize, dsize);
+    
     if (asize == min_block_size && small_block_start != NULL) {
 
         block = small_block_start;
@@ -1197,7 +1223,7 @@ void *malloc(size_t size) {
 
     // Mark block as allocated
     size_t block_size = get_size(block);
-    write_block(block, block_size, true);
+    write_block(block, block_size, true,get_prev_alloc(block),get_prev_small(block));
 
     if (asize == min_block_size && small_block_start != NULL) {
         remove_small_list(block);
@@ -1234,14 +1260,9 @@ void free(void *bp) {
     // The block should be marked as allocated
     dbg_assert(get_alloc(block));
 
-    // Mark the block as free
-    write_block(block, size, false);
-    if (size == min_block_size) {
-        add_small_list(block);
+    write_block(block, size, false,get_prev_alloc(block),get_prev_small(block));
 
-    } else {
-        add_seg_list(block);
-    }
+    // Mark the block as free
 
     // Try to coalesce the block with its neighbors
     coalesce_block(block, size);
