@@ -98,7 +98,7 @@ static const size_t min_block_size = dsize;
  *The minimum size of memory that can request for heap
  * (Must be divisible by dsize)
  */
-static const size_t chunksize = (1 << 9); // 9
+static const size_t chunksize = (1 << 12); // 9
 
 /**
  * TODO: Mask for extract the LSB
@@ -177,9 +177,9 @@ static block_t *seglist[LIST_NUM];
 
 static const word_t prev_alloc_mask = 0x2;
 
-static const word_t prev_small_mask = 0x3;
+static const word_t prev_small_mask = 0x4;
 
-static block_t *small_block_start;
+static block_t *small_block_start=NULL;
 
 /** the head of the free list*/
 
@@ -235,11 +235,18 @@ static size_t round_up(size_t size, size_t n) {
  * @param[in] alloc True if the block is allocated
  * @return The packed value
  */
-static word_t pack(size_t size, bool alloc) {
+static word_t pack(size_t size, bool alloc,bool prev_alloc,bool mini_status) {
     word_t word = size;
     if (alloc) {
-        word |= alloc_mask;
+        word |= (word_t)alloc_mask;
     }
+    if(prev_alloc){
+        word|= (word_t)((word_t)prev_alloc<<1);
+    }
+    if(mini_status){
+        word |= ((word_t)mini_status<<2);
+    }
+    
     return word;
 }
 
@@ -358,7 +365,7 @@ static bool get_alloc(block_t *block) {
 static void write_epilogue(block_t *block) {
     dbg_requires(block != NULL);
     dbg_requires((char *)block == (char *)mem_heap_hi() - 7);
-    block->header = pack(0, true);
+    block->header = pack(0, true,false,false);
 }
 
 /**
@@ -440,13 +447,13 @@ static void remove_from_list(block_t *block, block_t **free_head) {
  */
 static block_t **search_seg(block_t *block) {
     size_t size = get_size(block);
-    if (size > MAX_SIZE) {
-        return &seglist[LIST_NUM - 2];
+    if (size >=MAX_SIZE) {
+        return &seglist[LIST_NUM - 1];
     }
 
     for (size_t i = 0; i < 5; i++) {
         size_t current_size = 32 + (16 * i);
-        if (current_size >= size) {
+        if (current_size ==size) {
             return &seglist[i];
         }
     }
@@ -454,9 +461,9 @@ static block_t **search_seg(block_t *block) {
     for (size_t i = 5; i < LIST_NUM; i++) {
 
         size_t current_size = 1 << (i + 2);
-        if (current_size >= size) {
+        if (current_size >size) {
 
-            return &seglist[i];
+            return &seglist[i-1];
         }
     }
     printf("This is a big error\n");
@@ -468,7 +475,7 @@ static size_t search_seg_by_size(size_t size) {
     }
     for (size_t i = 0; i < 5; i++) {
         size_t current_size = 32 + (16 * i);
-        if (current_size >= size) {
+        if (current_size == size) {
             return i;
         }
     }
@@ -476,9 +483,9 @@ static size_t search_seg_by_size(size_t size) {
     for (size_t i = 5; i < LIST_NUM; i++) {
 
         size_t current_size = 1 << (i + 2);
-        if (current_size >= size) {
+        if (current_size > size) {
 
-            return i;
+            return i-1;
         }
     }
     return 1;
@@ -508,14 +515,10 @@ static block_t *find_next(block_t *block) {
                  "Called find_next on the last block in the heap");
     return (block_t *)((char *)block + get_size(block));
 }
-static void modify_next_prev_state(block_t *block, bool alloc) {
+static void modify_next_prev_state(block_t *block, bool alloc,bool mini_status) {
     block_t *next_header = find_next(block);
-    word_t word = next_header->header;
-    bool is_small_block = get_size(block) == min_block_size;
-    word |= (word_t)(alloc << 1);
-    word |= (word_t)(is_small_block << 2);
-
-    next_header->header = word;
+    
+    next_header->header = pack(get_size(next_header),get_alloc(next_header),alloc,mini_status);
 }
 static bool extract_prev_alloc(word_t header) {
     return (bool)((header & prev_alloc_mask) >> 1);
@@ -547,16 +550,16 @@ static void write_block(block_t *block, size_t size, bool alloc,bool prev_alloc,
     dbg_requires(size > 0);
 
     
-    block->header = (pack(size, alloc) | ((word_t)prev_alloc << 1)) |
-                    ((word_t)mini_status << 2);
+    block->header = pack(size, alloc,prev_alloc,mini_status);
 
     if (!alloc && size != min_block_size) {
 
         word_t *footerp = header_to_footer(block);
-        *footerp = (pack(size, alloc) | ((word_t)prev_alloc << 1))| ((word_t)mini_status << 2);
+        *footerp = pack(size, alloc,prev_alloc,mini_status);
 
     }
-    modify_next_prev_state(block, alloc);
+    bool status = size == min_block_size;
+    modify_next_prev_state(block, alloc,status);
 }
 
 /**
@@ -570,7 +573,7 @@ static word_t *find_prev_footer(block_t *block) {
 }
 
 static block_t *find_prev_small(block_t *block) {
-    return block - 2;
+    return (block_t*)(&(block->header) - 2);
 }
 
 /**
@@ -614,6 +617,7 @@ static void remove_small_list(block_t *block) {
                 block_t *next = current->data.miniblock.next;
                 prev->data.miniblock.next = next;
                 current->data.miniblock.next = NULL;
+                return;
             }
             prev = current;
             current = current->data.miniblock.next;
@@ -762,8 +766,16 @@ static block_t *extend_heap(size_t size) {
 
     // Initialize free block header/footer
     block_t *block = payload_to_header(bp);
+    if(block==heap_start){
+        write_block(block, size, false,true,false);
 
-    write_block(block, size, false,get_prev_alloc(block),get_prev_small(block));
+    }
+    else{
+        write_block(block, size, false,get_prev_alloc(block),get_prev_small(block));
+
+    }
+
+    
     ///
     // add_free_list(block);
 
@@ -826,13 +838,13 @@ static void split_block(block_t *block, size_t asize) {
  */
 static block_t *find_fit(size_t asize) {
     block_t *selected = NULL;
-    size_t limit = 30;
+    size_t limit = 10;
     block_t *block = NULL;;
     block_t *current_head;
     for (size_t i = search_seg_by_size(asize); i < LIST_NUM; i++) {
         current_head = seglist[i];
         size_t count = 0;
-        for (block = current_head; block != NULL && count < limit;
+        for (block = current_head; block != NULL&&count<limit;
              block = *get_next(block)) {
 
             if (!(get_alloc(block)) && (asize <= get_size(block))) {
@@ -1148,8 +1160,8 @@ bool mm_init(void) {
      * they correspond to a block footer and header respectively?
      */
 
-    start[0] = pack(0, true);         // Heap prologue (block footer)
-    start[1] = (pack(0, true) | 0x2); // Heap epilogue (block header)
+    start[0] = pack(0, true,true,false);         // Heap prologue (block footer)
+    start[1] = pack(0, true,true,false); // Heap epilogue (block header)
 
     // Heap starts with first "block header", currently the epilogue
     heap_start = (block_t *)&(start[1]);
